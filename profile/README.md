@@ -1,3 +1,8 @@
+<p>
+  <img src="rok.svg" alt="rok" width="96" height="96">
+  <img src="rokstones.svg" alt="rokstones" width="96" height="96">
+</p>
+
 # rok
 
 A small language with a rich library: static types, closed sum types,
