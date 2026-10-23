@@ -20,7 +20,7 @@
 
 ### Toolchain
 
-- [rok](https://github.com/rok-lang/rok) - the compiler (`rokc`), the runtime, the standard library, and the `rok` toolchain front end.
+- [rok](https://github.com/rok-lang/rok) - a Rust implementation of the spec: the compiler (`rokc`), runtime, standard library, and the `rok` toolchain.
 - [spec](https://github.com/rok-lang/spec) - the language and standard-library specification (English and Korean).
 
 ### Libraries (stones)
