@@ -1,16 +1,20 @@
-<p>
+<p align="center">
   <img src="rok.svg" alt="rok" width="96" height="96">
   <img src="rokstones.svg" alt="rokstones" width="96" height="96">
 </p>
 
-# rok
+<h1 align="center">rok</h1>
 
-A small language with a rich library: static types, closed sum types,
-ahead-of-time compilation, and a package registry, plus a REPL and Jupyter.
+<p align="center">
+  A small language with a rich library: static types, closed sum types,<br>
+  ahead-of-time compilation, and a package registry, plus a REPL and Jupyter.
+</p>
 
-- Site: <https://rok-lang.org>
-- Docs: <https://docs.rok-lang.org>
-- Registry: <https://rokstones.io>
+<p align="center">
+  <a href="https://rok-lang.org">Site</a> &middot;
+  <a href="https://docs.rok-lang.org">Docs</a> &middot;
+  <a href="https://rokstones.io">Registry</a>
+</p>
 
 ## Repositories
 
