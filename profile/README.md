@@ -44,7 +44,7 @@
 ### Web
 
 - [rok-lang.org](https://github.com/rok-lang/rok-lang.org) - the home and documentation site.
-- [playground](https://github.com/rok-lang/playground) - compile rok in the browser.
+- [playground.rok-lang.org](https://github.com/rok-lang/playground.rok-lang.org) - compile rok in the browser.
 
 ## Status
 
