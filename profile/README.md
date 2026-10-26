@@ -6,8 +6,8 @@
 <h1 align="center">rok</h1>
 
 <p align="center">
-  A small language with a rich library: static types, closed sum types,<br>
-  ahead-of-time compilation, and a package registry, plus a REPL and Jupyter.
+  A statically-typed, compiled language with a rich library: closed sum types,<br>
+  ahead-of-time compilation, a package registry, a REPL, and Jupyter.
 </p>
 
 <p align="center">
