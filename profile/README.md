@@ -28,3 +28,5 @@ rok new hello && cd hello && rok run   # Hello, world!
 - [**rokstones.io**](https://github.com/rok-lang/rokstones.io) — package registry
 - [**rok-lang.org**](https://github.com/rok-lang/rok-lang.org) · [**playground**](https://github.com/rok-lang/playground.rok-lang.org) — site, docs, browser
 - [**rok.vim**](https://github.com/rok-lang/rok.vim) · [**rok.vscode**](https://github.com/rok-lang/rok.vscode) — editors
+
+<p align="center"><sub>Built by <a href="https://daminstudio.net">DaminStudio</a></sub></p>
