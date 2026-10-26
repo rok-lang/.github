@@ -3,7 +3,7 @@
   <img src="rokstones.svg" alt="rokstones" width="96" height="96">
 </p>
 
-<h1 align="center">rok</h1>
+<h1 align="center">Rok</h1>
 
 <p align="center">
   A statically-typed, compiled language with a rich library: closed sum types,<br>
