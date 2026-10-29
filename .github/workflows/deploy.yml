@@ -1,0 +1,27 @@
+# Ask the deploy pipeline to ship a site. Callers pass the site name;
+# nothing else about the deploy lives in a public repository.
+name: deploy
+
+on:
+  workflow_call:
+    inputs:
+      site:
+        description: rok-web, rokstones, playground or content
+        type: string
+        required: true
+    secrets:
+      INFRA_DISPATCH_TOKEN:
+        required: false
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Dispatch
+        env:
+          GH_TOKEN: ${{ secrets.INFRA_DISPATCH_TOKEN }}
+          SITE: ${{ inputs.site }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then echo "no dispatch token; skipped"; exit 0; fi
+          gh api repos/rok-lang/infra/dispatches -f event_type="$SITE" \
+            -f "client_payload[repo]=$GITHUB_REPOSITORY" -f "client_payload[sha]=$GITHUB_SHA"

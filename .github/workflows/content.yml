@@ -1,7 +1,6 @@
 # Check and bundle a content repository (docs, www, spec) for the Rok sites.
 # A vX.Y.Z branch is checked with rok X.Y.Z, main with the latest release.
-# Publishing and the site reload run only when their secrets are set; the
-# values (bucket, endpoint, reload URL) never appear in this file.
+# A push that passes asks the deploy pipeline to rebuild the sites.
 name: content
 
 on:
@@ -12,17 +11,7 @@ on:
         type: boolean
         default: true
     secrets:
-      R2_ACCESS_KEY_ID:
-        required: false
-      R2_SECRET_ACCESS_KEY:
-        required: false
-      R2_ENDPOINT:
-        required: false
-      R2_BUCKET:
-        required: false
-      ROK_WEB_RELOAD_URL:
-        required: false
-      ROK_WEB_RELOAD_KEY:
+      INFRA_DISPATCH_TOKEN:
         required: false
 
 jobs:
@@ -74,26 +63,11 @@ jobs:
           name: bundle
           path: bundle.rokon
 
-      - name: Publish
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: auto
-          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
-          R2_BUCKET: ${{ secrets.R2_BUCKET }}
-        if: github.event_name == 'push' && env.AWS_ACCESS_KEY_ID != ''
-        run: |
-          key="${GITHUB_REPOSITORY#rok-lang/}/$GITHUB_REF_NAME"
-          aws s3 cp bundle.rokon "s3://$R2_BUCKET/$key/$GITHUB_SHA.rokon" --endpoint-url "$R2_ENDPOINT"
-          printf '%s\n' "$GITHUB_SHA" > current
-          aws s3 cp current "s3://$R2_BUCKET/$key/current" --endpoint-url "$R2_ENDPOINT"
-
-      - name: Reload the site
-        env:
-          URL: ${{ secrets.ROK_WEB_RELOAD_URL }}
-          KEY: ${{ secrets.ROK_WEB_RELOAD_KEY }}
-        if: github.event_name == 'push' && env.URL != '' && env.KEY != ''
-        run: |
-          body="${GITHUB_REPOSITORY#rok-lang/}/$GITHUB_REF_NAME $GITHUB_SHA"
-          sig=$(printf '%s' "$body" | openssl dgst -sha256 -hmac "$KEY" | awk '{print $NF}')
-          curl -fsS -X POST -H "X-Rok-Signature: $sig" --data "$body" "$URL"
+  deploy:
+    needs: bundle
+    if: github.event_name == 'push'
+    uses: rok-lang/.github/.github/workflows/deploy.yml@main
+    with:
+      site: content
+    secrets:
+      INFRA_DISPATCH_TOKEN: ${{ secrets.INFRA_DISPATCH_TOKEN }}
