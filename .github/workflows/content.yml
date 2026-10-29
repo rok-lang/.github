@@ -30,7 +30,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+
+      - name: Libraries the examples link (zlib in the FFI chapter)
+        run: sudo apt-get install -y -q zlib1g-dev
 
       - name: Toolchain for this branch
         id: tc
@@ -45,7 +48,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           repository: rok-lang/web
           path: .web
