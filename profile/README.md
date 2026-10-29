@@ -5,8 +5,9 @@
 <h1 align="center">Rok</h1>
 
 <p align="center">
-  A statically-typed, compiled language with a rich library: closed sum types,<br>
-  ahead-of-time compilation, a package registry, a REPL, and Jupyter.
+  A compiled language that tells you what to write.<br>
+  Closed sum types, ahead-of-time compilation, a rich library,<br>
+  a package registry, a REPL, and Jupyter.
 </p>
 
 <p align="center">
