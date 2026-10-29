@@ -1,0 +1,93 @@
+# Check and bundle a content repository (docs, www, spec) for the Rok sites.
+# A vX.Y.Z branch is checked with rok X.Y.Z, main with the latest release.
+# Publishing and the site reload run only when their secrets are set; the
+# values (bucket, endpoint, reload URL) never appear in this file.
+name: content
+
+on:
+  workflow_call:
+    inputs:
+      check:
+        description: Run the rok blocks and compare the documented diagnostics
+        type: boolean
+        default: true
+    secrets:
+      R2_ACCESS_KEY_ID:
+        required: false
+      R2_SECRET_ACCESS_KEY:
+        required: false
+      R2_ENDPOINT:
+        required: false
+      R2_BUCKET:
+        required: false
+      ROK_WEB_RELOAD_URL:
+        required: false
+      ROK_WEB_RELOAD_KEY:
+        required: false
+
+jobs:
+  bundle:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain for this branch
+        id: tc
+        run: |
+          case "$GITHUB_REF_NAME" in
+            v[0-9]*.[0-9]*.[0-9]*) v="${GITHUB_REF_NAME#v}" ;;
+            *) v=$(gh release view -R rok-lang/rok --json tagName -q .tagName); v="${v#v}" ;;
+          esac
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          curl -fsSL https://rok-lang.org/install.sh | ROK_VERSION="$v" ROK_NO_MODIFY_PATH=1 sh -s -- -q
+          echo "$HOME/.rok/bin" >> "$GITHUB_PATH"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - uses: actions/checkout@v4
+        with:
+          repository: rok-lang/web
+          path: .web
+
+      - name: Build rok-content
+        run: cd .web/tools/content && rok build --release
+
+      - name: Check
+        if: inputs.check
+        run: .web/tools/content/target/release/rok_content check .
+
+      - name: Bundle
+        run: >
+          .web/tools/content/target/release/rok_content bundle .
+          --repo "$GITHUB_REPOSITORY" --branch "$GITHUB_REF_NAME" --sha "$GITHUB_SHA"
+          --toolchain "${{ steps.tc.outputs.version }}" --out bundle.rokon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bundle
+          path: bundle.rokon
+
+      - name: Publish
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        if: github.event_name == 'push' && env.AWS_ACCESS_KEY_ID != ''
+        run: |
+          key="${GITHUB_REPOSITORY#rok-lang/}/$GITHUB_REF_NAME"
+          aws s3 cp bundle.rokon "s3://$R2_BUCKET/$key/$GITHUB_SHA.rokon" --endpoint-url "$R2_ENDPOINT"
+          printf '%s\n' "$GITHUB_SHA" > current
+          aws s3 cp current "s3://$R2_BUCKET/$key/current" --endpoint-url "$R2_ENDPOINT"
+
+      - name: Reload the site
+        env:
+          URL: ${{ secrets.ROK_WEB_RELOAD_URL }}
+          KEY: ${{ secrets.ROK_WEB_RELOAD_KEY }}
+        if: github.event_name == 'push' && env.URL != '' && env.KEY != ''
+        run: |
+          body="${GITHUB_REPOSITORY#rok-lang/}/$GITHUB_REF_NAME $GITHUB_SHA"
+          sig=$(printf '%s' "$body" | openssl dgst -sha256 -hmac "$KEY" | awk '{print $NF}')
+          curl -fsS -X POST -H "X-Rok-Signature: $sig" --data "$body" "$URL"
