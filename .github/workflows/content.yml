@@ -59,6 +59,9 @@ jobs:
       - name: Check
         if: inputs.check
         run: .web/tools/content/target/release/rok_content check .
+        env:
+          # rokc's C driver finds system libraries (-lz) through LIBRARY_PATH.
+          LIBRARY_PATH: /usr/lib/x86_64-linux-gnu
 
       - name: Bundle
         run: >
