@@ -10,7 +10,7 @@ on:
         type: string
         required: true
     secrets:
-      INFRA_DISPATCH_TOKEN:
+      GH_DISPATCH_TOKEN_INFRA:
         required: false
 
 jobs:
@@ -19,7 +19,7 @@ jobs:
     steps:
       - name: Dispatch
         env:
-          GH_TOKEN: ${{ secrets.INFRA_DISPATCH_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_DISPATCH_TOKEN_INFRA }}
           SITE: ${{ inputs.site }}
         run: |
           if [ -z "$GH_TOKEN" ]; then echo "no dispatch token; skipped"; exit 0; fi

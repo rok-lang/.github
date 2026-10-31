@@ -11,7 +11,7 @@ on:
         type: boolean
         default: true
     secrets:
-      INFRA_DISPATCH_TOKEN:
+      GH_DISPATCH_TOKEN_INFRA:
         required: false
 
 jobs:
@@ -70,4 +70,4 @@ jobs:
     with:
       site: content
     secrets:
-      INFRA_DISPATCH_TOKEN: ${{ secrets.INFRA_DISPATCH_TOKEN }}
+      GH_DISPATCH_TOKEN_INFRA: ${{ secrets.GH_DISPATCH_TOKEN_INFRA }}
