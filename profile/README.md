@@ -5,7 +5,7 @@
 <h1 align="center">Rok</h1>
 
 <p align="center">
-  A compiled language that tells you what to write.<br>
+  Compiled and safe, without the fight.<br>
   Closed sum types, ahead-of-time compilation, a rich library,<br>
   a package registry, a REPL, and Jupyter.
 </p>
