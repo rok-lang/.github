@@ -46,7 +46,8 @@ runs:
         IN_RUN: ${{ inputs.candidate-run }}
         IN_HOME: ${{ inputs.home }}
         IN_ATTEST: ${{ inputs.attest }}
-      run: |
+      # puts rok on PATH and sets ROK_HOME, which is the point of the action
+      run: | # zizmor: ignore[github-env]
         set -eu
         lib=$GITHUB_ACTION_PATH/../../lib
         if command -v cygpath > /dev/null; then lib=$(cygpath -u "$lib"); fi

@@ -14,12 +14,17 @@ on:
       GH_DISPATCH_TOKEN_INFRA:
         required: false
 
+permissions:
+  contents: read
+
 jobs:
   bundle:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Libraries the examples link (zlib in the FFI chapter)
         run: sudo apt-get install -y -q zlib1g-dev
@@ -37,8 +42,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           repository: rok-lang/web
           path: .web
 
@@ -56,9 +62,11 @@ jobs:
         run: >
           .web/tools/content/target/release/rok_content bundle .
           --repo "$GITHUB_REPOSITORY" --branch "$GITHUB_REF_NAME" --sha "$GITHUB_SHA"
-          --toolchain "${{ steps.tc.outputs.version }}" --out bundle.rokon
+          --toolchain "$TOOLCHAIN" --out bundle.rokon
+        env:
+          TOOLCHAIN: ${{ steps.tc.outputs.version }}
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: bundle
           path: bundle.rokon
@@ -66,6 +74,7 @@ jobs:
   deploy:
     needs: bundle
     if: github.event_name == 'push'
+    permissions: {}
     uses: rok-lang/.github/.github/workflows/deploy.yml@main
     with:
       site: content

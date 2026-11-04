@@ -1,0 +1,7 @@
+# Our own reusable workflows follow main; third-party actions stay SHA-pinned.
+rules:
+  unpinned-uses:
+    config:
+      policies:
+        "rok-lang/*": ref-pin
+        "*": hash-pin

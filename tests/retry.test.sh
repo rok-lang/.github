@@ -101,7 +101,7 @@ i=0
 while [ $i -lt 30 ]; do
 	RETRY_ATTEMPTS=$i
 	j=$(retry_jitter 100)
-	[ "$j" -ge 80 ] && [ "$j" -le 120 ] || fail "jitter $j"
+	if [ "$j" -lt 80 ] || [ "$j" -gt 120 ]; then fail "jitter $j"; fi
 	i=$((i + 1))
 done
 RETRY_JITTER=0
