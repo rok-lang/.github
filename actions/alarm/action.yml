@@ -1,0 +1,47 @@
+# Inputs: title, ok, body, labels, repo
+# Outputs: issue, action
+# Permissions: issues write on repo
+name: alarm
+description: Keep one issue per title in step with a check; open it when red, comment while red, close it when green
+inputs:
+  title:
+    description: The issue title, which is the alarm's identity
+    required: true
+  ok:
+    description: '"true" when the watched thing is green, "false" when red'
+    required: true
+  body:
+    description: What happened, with links; posted as the issue body or a comment
+    required: true
+  labels:
+    description: Comma list for a new issue; the first one narrows the search
+    default: alarm
+  repo:
+    description: Where the issue lives
+    default: ${{ github.repository }}
+  token:
+    description: Token with issues write on repo
+    default: ${{ github.token }}
+outputs:
+  issue:
+    description: The issue number (empty if none was needed)
+    value: ${{ steps.alarm.outputs.issue }}
+  action:
+    description: opened, updated, closed or none
+    value: ${{ steps.alarm.outputs.action }}
+runs:
+  using: composite
+  steps:
+    - id: alarm
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        IN_REPO: ${{ inputs.repo }}
+        IN_TITLE: ${{ inputs.title }}
+        IN_OK: ${{ inputs.ok }}
+        IN_BODY: ${{ inputs.body }}
+        IN_LABELS: ${{ inputs.labels }}
+      run: |
+        set -eu
+        printf '%s\n' "$IN_BODY" > "$RUNNER_TEMP/alarm-body.md"
+        sh "$GITHUB_ACTION_PATH/../../lib/alarm.sh" "$IN_REPO" "$IN_TITLE" "$IN_OK" "$RUNNER_TEMP/alarm-body.md" "$IN_LABELS" | tee -a "$GITHUB_OUTPUT"

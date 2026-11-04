@@ -1,0 +1,75 @@
+# Inputs: app-id, private-key, repositories, permissions
+# Outputs: token
+# Permissions: none of the job's own; the token carries what was asked
+# The token is revoked when the job ends; mint it in the job that uses it.
+name: app-token
+description: Mint a rok-lang-release App token limited to named repositories and permissions
+inputs:
+  app-id:
+    description: The App's ID or client ID (environment secret RELEASE_APP_ID)
+    default: ""
+  private-key:
+    description: The App's private key (environment secret RELEASE_APP_KEY)
+    default: ""
+  repositories:
+    description: 'Comma or newline list of repositories in the org, e.g. "rok, docs"; never the whole org'
+    required: true
+  permissions:
+    description: 'Comma or newline list of name:level, e.g. "contents:write, pull-requests:write"'
+    required: true
+outputs:
+  token:
+    description: The installation token
+    value: ${{ steps.mint.outputs.token }}
+runs:
+  using: composite
+  steps:
+    - id: scope
+      shell: bash
+      env:
+        IN_ID: ${{ inputs.app-id }}
+        IN_KEY: ${{ inputs.private-key }}
+        IN_REPOS: ${{ inputs.repositories }}
+        IN_PERMS: ${{ inputs.permissions }}
+      run: |
+        set -eu
+        if [ -z "$IN_ID" ] || [ -z "$IN_KEY" ]; then
+          echo "::error::app-token: no App credentials. Run this job in an environment that holds RELEASE_APP_ID and RELEASE_APP_KEY of the rok-lang-release App, and pass them as app-id and private-key."
+          exit 1
+        fi
+        repos=$(printf '%s\n' "$IN_REPOS" | tr ',' '\n' | sed 's/^ *//; s/ *$//; s|^rok-lang/||' | grep -v '^$' | paste -sd, -)
+        [ -n "$repos" ] || { echo "::error::app-token: name the repositories; an org-wide token is not minted"; exit 1; }
+        case $repos in */*) echo "::error::app-token: $repos: only rok-lang repositories"; exit 1 ;; esac
+        echo "repositories=$repos" >> "$GITHUB_OUTPUT"
+        n=0
+        for p in $(printf '%s\n' "$IN_PERMS" | tr ',\n' '  '); do
+          name=${p%%:*}
+          level=${p#*:}
+          [ "$name" != "$p" ] || { echo "::error::app-token: \"$p\": write name:read or name:write"; exit 1; }
+          case $level in read | write) ;; *) echo "::error::app-token: \"$p\": the level is read or write"; exit 1 ;; esac
+          case $name in
+          contents | pull-requests | issues | actions | statuses) ;;
+          administration | metadata)
+            [ "$level" = read ] || { echo "::error::app-token: $name is read-only for this App"; exit 1; } ;;
+          workflows) echo "::error::app-token: the App never writes workflow files; Dependabot bumps them"; exit 1 ;;
+          *) echo "::error::app-token: \"$name\" is not a permission this App has (contents, pull-requests, issues, actions, statuses, administration:read, metadata:read)"; exit 1 ;;
+          esac
+          echo "$name=$level" >> "$GITHUB_OUTPUT"
+          n=$((n + 1))
+        done
+        [ "$n" -gt 0 ] || { echo "::error::app-token: name the permissions; a token with all of the App's permissions is not minted"; exit 1; }
+        echo "token for $repos: $(printf '%s\n' "$IN_PERMS" | tr '\n' ' ')"
+    - id: mint
+      uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+      with:
+        client-id: ${{ inputs.app-id }}
+        private-key: ${{ inputs.private-key }}
+        owner: rok-lang
+        repositories: ${{ steps.scope.outputs.repositories }}
+        permission-contents: ${{ steps.scope.outputs.contents }}
+        permission-pull-requests: ${{ steps.scope.outputs.pull-requests }}
+        permission-issues: ${{ steps.scope.outputs.issues }}
+        permission-actions: ${{ steps.scope.outputs.actions }}
+        permission-statuses: ${{ steps.scope.outputs.statuses }}
+        permission-administration: ${{ steps.scope.outputs.administration }}
+        permission-metadata: ${{ steps.scope.outputs.metadata }}
