@@ -1,0 +1,145 @@
+# Lint, hermetic tests and manifest checks of the blocks. install-rok also
+# runs for real on the three smoke runners.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: tools
+        run: |
+          set -eu
+          mkdir -p "$RUNNER_TEMP/bin"
+          cd "$RUNNER_TEMP"
+          curl -fsSL -o actionlint.tgz https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  actionlint.tgz" | sha256sum -c -
+          tar -xzf actionlint.tgz -C bin actionlint
+          curl -fsSL -o bin/shfmt https://github.com/mvdan/sh/releases/download/v3.14.1/shfmt_v3.14.1_linux_amd64
+          echo "76e77641faa025814b77f153b29796b8e6fa2fca03e0c76a691608b86c7ea7bf  bin/shfmt" | sha256sum -c -
+          chmod +x bin/shfmt
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: actionlint
+        run: actionlint -color
+      - name: action headers
+        run: |
+          # each action says what it takes, gives and needs
+          bad=0
+          for f in actions/*/action.yml; do
+            for k in Inputs Outputs Permissions; do
+              grep -q "^# $k:" "$f" || { echo "::error file=$f::no '# $k:' line in the header"; bad=1; }
+            done
+          done
+          exit "$bad"
+      - name: shellcheck
+        run: |
+          set -eu
+          shellcheck --version | sed -n 2p
+          shellcheck -s sh lib/*.sh tests/*.sh tests/shim/*
+          # the run: blocks of the composite actions
+          mkdir -p "$RUNNER_TEMP/runs"
+          for f in actions/*/action.yml; do
+            a=$(basename "$(dirname "$f")")
+            n=$(yq '[.runs.steps[] | select(has("run"))] | length' "$f")
+            i=0
+            while [ "$i" -lt "$n" ]; do
+              { echo '#!/bin/bash'; yq "[.runs.steps[] | select(has(\"run\"))][$i].run" "$f"; } > "$RUNNER_TEMP/runs/$a-$i.sh"
+              i=$((i + 1))
+            done
+          done
+          shellcheck "$RUNNER_TEMP"/runs/*.sh
+      - name: shfmt
+        run: shfmt -sr -d lib tests
+
+  zizmor:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: zizmorcore/zizmor-action@85b2b9fb8e3325e7a23d7d0a9d7ba5ae0f999e3e # v0.7.1
+        with:
+          advanced-security: false
+
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-26]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: tests/run.sh
+        run: tests/run.sh
+
+  manifest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: schema
+        run: |
+          set -eu
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install -q check-jsonschema==0.38.2
+          "$RUNNER_TEMP/venv/bin/check-jsonschema" --check-metaschema release/pipeline.schema.json
+          "$RUNNER_TEMP/venv/bin/check-jsonschema" --schemafile release/pipeline.schema.json release/pipeline.json
+      - name: cross-check against GitHub
+        run: lib/manifest-check.sh --live release/pipeline.json
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  install-rok:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-26, windows-2022]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: rok
+        uses: ./actions/install-rok # zizmor: ignore[self-repository] tests this checkout
+        with:
+          version: "0.2"
+      - name: rok runs
+        shell: bash
+        env:
+          WANT: ${{ steps.rok.outputs.version }}
+        run: |
+          set -eu
+          rok --version
+          rok --version | grep -q "^rok $WANT "

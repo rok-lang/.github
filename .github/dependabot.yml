@@ -1,0 +1,22 @@
+version: 2
+
+# Keeps the SHA pins of the workflows and of every composite action
+# current; one grouped PR for minor and patch bumps, a major on its own.
+updates:
+  - package-ecosystem: github-actions
+    directories:
+      - /
+      - /actions/*
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: ci
+      include: scope
+    groups:
+      actions:
+        update-types:
+          - minor
+          - patch

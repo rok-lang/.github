@@ -1,0 +1,204 @@
+#!/bin/sh
+# A fake gh over a tiny GitHub kept in $SHIM/state.json:
+#   {"repos": {"<owner/name>": {"releases": [...], "issues": [...],
+#     "files": {"<ref>": {"<path>": "<content>"}}}}}
+# Every call is logged to $SHIM/calls as "<method> <path>".
+#
+# Faults, one per line of $SHIM/faults: "<count> <kind> <ERE>". The
+# first <count> calls whose "<method> <path>" matches fail with <kind>:
+# an HTTP status (502, 404, 422, ...), 429 (Retry-After: 2), 403rl
+# (secondary rate limit), or net (no such host).
+# shellcheck disable=SC2016 # jq programs
+set -eu
+: "${SHIM:?}"
+state=$SHIM/state.json
+[ -f "$state" ] || echo '{"repos": {}}' > "$state"
+
+die() {
+	echo "gh shim: $*" >&2
+	exit 2
+}
+
+# fault <method path>: fail as a matching line of $SHIM/faults says.
+fault() {
+	[ -f "$SHIM/faults" ] || return 0
+	_n=0
+	while read -r _count _kind _re; do
+		_n=$((_n + 1))
+		echo "$1" | grep -Eq -- "$_re" || continue
+		_used=$(cat "$SHIM/faults.$_n" 2> /dev/null || echo 0)
+		[ "$_used" -lt "$_count" ] || continue
+		echo $((_used + 1)) > "$SHIM/faults.$_n"
+		echo "FAULT $_kind $1" >> "$SHIM/calls"
+		case $_kind in
+		net)
+			echo "Get \"https://api.github.com/x\": dial tcp: lookup api.github.com: no such host" >&2
+			exit 1
+			;;
+		429)
+			[ -z "$include" ] || printf 'HTTP/2.0 429 Too Many Requests\nRetry-After: 2\n\n{"message":"Too Many Requests"}\n'
+			echo "gh: Too Many Requests (HTTP 429)" >&2
+			exit 1
+			;;
+		403rl)
+			[ -z "$include" ] || printf 'HTTP/2.0 403 Forbidden\n\n{"message":"You have exceeded a secondary rate limit"}\n'
+			echo "gh: You have exceeded a secondary rate limit. (HTTP 403)" >&2
+			exit 1
+			;;
+		*)
+			[ -z "$include" ] || printf 'HTTP/2.0 %s Fault\n\n{"message":"fault"}\n' "$_kind"
+			echo "gh: Fault (HTTP $_kind)" >&2
+			exit 1
+			;;
+		esac
+	done < "$SHIM/faults"
+}
+
+reply() { # <status> <json>: answer and exit
+	if [ -n "$include" ]; then
+		printf 'HTTP/2.0 %s X\nContent-Type: application/json\n\n' "$1"
+	fi
+	if [ "$1" -ge 400 ]; then
+		[ -n "$include" ] && printf '%s\n' "$2"
+		echo "gh: $(printf '%s' "$2" | jq -r '.message // "error"') (HTTP $1)" >&2
+		exit 1
+	fi
+	if [ -n "$jqx" ]; then
+		printf '%s\n' "$2" | jq -r "$jqx"
+	else
+		printf '%s\n' "$2"
+	fi
+	exit 0
+}
+
+save() { # <jq program> [args...]: rewrite the state
+	_p=$1
+	shift
+	jq "$@" "$_p" "$state" > "$state.new" && mv "$state.new" "$state"
+}
+
+api() {
+	method=
+	include=
+	jqx=
+	input=
+	fields='{}'
+	path=
+	while [ $# -gt 0 ]; do
+		case $1 in
+		-X | --method) method=$2 && shift ;;
+		-i | --include) include=1 ;;
+		-q | --jq) jqx=$2 && shift ;;
+		--input) input=$2 && shift ;;
+		--paginate | --silent) ;;
+		-H | --header) shift ;;
+		-f | --raw-field) fields=$(printf '%s\n' "$fields" | jq -c --arg kv "$2" '($kv | index("=")) as $i | . + {($kv[:$i]): $kv[$i + 1:]}') && shift ;;
+		-F | --field) fields=$(printf '%s\n' "$fields" | jq -c --arg kv "$2" '($kv | index("=")) as $i | . + {($kv[:$i]): ($kv[$i + 1:] | (try fromjson catch .))}') && shift ;;
+		-*) die "unsupported api flag $1" ;;
+		*) path=${1#/} ;;
+		esac
+		shift
+	done
+	if [ -z "$method" ]; then
+		if [ "$fields" != '{}' ] || [ -n "$input" ]; then method=POST; else method=GET; fi
+	fi
+	body=$fields
+	[ -z "$input" ] || body=$(cat "$input")
+	echo "$method $path" >> "$SHIM/calls"
+	fault "$method $path"
+	p=${path%%\?*}
+	q=
+	case $path in *\?*) q=${path#*\?} ;; esac
+	case $p in
+	repos/*/*/issues/*/comments)
+		r=$(echo "$p" | cut -d/ -f2,3)
+		n=$(echo "$p" | cut -d/ -f5)
+		[ "$method" = POST ] || die "comments: only POST"
+		save '.repos[$r].issues |= map(if .number == ($n | tonumber) then .comments += [$b.body] else . end)' --arg r "$r" --arg n "$n" --argjson b "$body"
+		reply 201 '{}'
+		;;
+	repos/*/*/issues/*)
+		r=$(echo "$p" | cut -d/ -f2,3)
+		n=$(echo "$p" | cut -d/ -f5)
+		jq -e --arg r "$r" --arg n "$n" '.repos[$r].issues[]? | select(.number == ($n | tonumber))' "$state" > /dev/null ||
+			reply 404 '{"message":"Not Found"}'
+		if [ "$method" = PATCH ]; then
+			save '.repos[$r].issues |= map(if .number == ($n | tonumber) then . + $b else . end)' --arg r "$r" --arg n "$n" --argjson b "$body"
+		fi
+		reply 200 "$(jq -c --arg r "$r" --arg n "$n" '.repos[$r].issues[] | select(.number == ($n | tonumber))' "$state")"
+		;;
+	repos/*/*/issues)
+		r=$(echo "$p" | cut -d/ -f2,3)
+		if [ "$method" = POST ]; then
+			save '.repos[$r].issues = ((.repos[$r].issues // []) as $i | $i + [{number: ($i | length + 1), title: $b.title, body: $b.body, labels: ($b.labels // [] | map({name: .})), state: "open", comments: []}])' --arg r "$r" --argjson b "$body"
+			reply 201 "$(jq -c --arg r "$r" '.repos[$r].issues[-1]' "$state")"
+		fi
+		st=$(echo "$q" | tr '&' '\n' | sed -n 's/^state=//p')
+		lb=$(echo "$q" | tr '&' '\n' | sed -n 's/^labels=//p' | sed 's/%20/ /g; s/%3A/:/g; s/%2C/,/g; s/%2F/\//g')
+		reply 200 "$(jq -c --arg r "$r" --arg st "${st:-open}" --arg lb "$lb" '
+			[.repos[$r].issues[]? | select($st == "all" or .state == $st)
+			 | select($lb == "" or (($lb | split(",")) - [.labels[].name] | length) == 0)] | reverse' "$state")"
+		;;
+	repos/*/*/releases)
+		r=$(echo "$p" | cut -d/ -f2,3)
+		reply 200 "$(jq -c --arg r "$r" '.repos[$r].releases // []' "$state")"
+		;;
+	repos/*/*/contents/*)
+		r=$(echo "$p" | cut -d/ -f2,3)
+		f=$(echo "$p" | cut -d/ -f5-)
+		ref=$(echo "$q" | tr '&' '\n' | sed -n 's/^ref=//p')
+		c=$(jq -c --arg r "$r" --arg f "$f" --arg ref "${ref:-main}" '.repos[$r].files[$ref][$f] // empty' "$state")
+		[ -n "$c" ] || reply 404 '{"message":"Not Found"}'
+		reply 200 "$(jq -cn --argjson c "$c" '{content: ($c | @base64), encoding: "base64"}')"
+		;;
+	repos/*/*/git/trees/*)
+		r=$(echo "$p" | cut -d/ -f2,3)
+		ref=$(echo "$p" | cut -d/ -f6)
+		reply 200 "$(jq -c --arg r "$r" --arg ref "$ref" '{tree: [.repos[$r].files[$ref] // {} | keys[] | {path: ., type: "blob"}]}' "$state")"
+		;;
+	repos/*/*)
+		r=$(echo "$p" | cut -d/ -f2,3)
+		jq -e --arg r "$r" '.repos | has($r)' "$state" > /dev/null || reply 404 '{"message":"Not Found"}'
+		reply 200 "$(jq -cn --arg r "$r" '{full_name: $r}')"
+		;;
+	*)
+		[ -f "$SHIM/api/$p" ] || reply 404 '{"message":"Not Found"}'
+		reply 200 "$(cat "$SHIM/api/$p")"
+		;;
+	esac
+}
+
+include=
+jqx=
+cmd=${1:-}
+[ $# -eq 0 ] || shift
+case $cmd in
+api) api "$@" ;;
+run)
+	[ "$1" = download ] || die "run: only download"
+	id=$2
+	shift 2
+	dir=.
+	while [ $# -gt 0 ]; do
+		case $1 in -D) dir=$2 && shift ;; esac
+		shift
+	done
+	echo "GET runs/$id/artifacts" >> "$SHIM/calls"
+	fault "GET runs/$id/artifacts"
+	[ -d "$SHIM/runs/$id" ] || {
+		echo "no artifacts found for run $id" >&2
+		exit 1
+	}
+	mkdir -p "$dir"
+	cp -R "$SHIM/runs/$id/." "$dir/"
+	;;
+attestation)
+	echo "GET attestation $2" >> "$SHIM/calls"
+	fault "GET attestation $2"
+	if [ -f "$SHIM/attest-fail" ]; then
+		echo "Error: verification failed" >&2
+		exit 1
+	fi
+	;;
+*) die "unsupported: $cmd $*" ;;
+esac

@@ -1,0 +1,64 @@
+# Inputs: component + version, or url + expect
+# Outputs: none; the step fails when a check is still red after its budget
+# Permissions: contents read (the pin file of a component)
+name: health-check
+description: Poll a released component's health from the manifest, or one URL, until it passes or its budget runs out
+inputs:
+  component:
+    description: A manifest component id; runs every health[] entry of it
+    default: ""
+  version:
+    description: The release being checked ({version}, {series})
+    default: ""
+  pinned:
+    description: '{pinned}; resolved from the component''s pin when empty'
+    default: ""
+  vars:
+    description: 'More placeholder values as a JSON object, e.g. {"editor_version": "0.2.1"}'
+    default: ""
+  manifest:
+    description: Path of the manifest (default the one of this blocks version)
+    default: ""
+  url:
+    description: One URL or probe (index-lag:<host>, compile:<host>) instead of a component
+    default: ""
+  expect:
+    description: 'With url: "key value" for a /healthz URL, else text the body must contain'
+    default: ""
+  budget:
+    description: 'With url: seconds to keep trying'
+    default: "60"
+  interval:
+    description: Seconds between tries
+    default: "60"
+  token:
+    description: Token for the GitHub API (pin files, the index)
+    default: ${{ github.token }}
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        HEALTH_INTERVAL: ${{ inputs.interval }}
+        IN_COMPONENT: ${{ inputs.component }}
+        IN_VERSION: ${{ inputs.version }}
+        IN_PINNED: ${{ inputs.pinned }}
+        IN_VARS: ${{ inputs.vars }}
+        IN_MANIFEST: ${{ inputs.manifest }}
+        IN_URL: ${{ inputs.url }}
+        IN_EXPECT: ${{ inputs.expect }}
+        IN_BUDGET: ${{ inputs.budget }}
+      run: |
+        set -eu
+        lib=$GITHUB_ACTION_PATH/../../lib
+        if [ -n "$IN_COMPONENT" ]; then
+          [ -n "$IN_VERSION" ] || { echo "::error::health-check: component needs a version"; exit 1; }
+          sh "$lib/health.sh" component "${IN_MANIFEST:-$lib/../release/pipeline.json}" "$IN_COMPONENT" "$IN_VERSION" "$IN_PINNED" "$IN_VARS"
+        elif [ -n "$IN_URL" ]; then
+          [ -n "$IN_EXPECT" ] || { echo "::error::health-check: url needs expect"; exit 1; }
+          sh "$lib/health.sh" check "$IN_URL" "$IN_EXPECT" "$IN_BUDGET"
+        else
+          echo "::error::health-check: give a component or a url"
+          exit 1
+        fi

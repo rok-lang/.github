@@ -1,0 +1,68 @@
+# Inputs: issue or title, patch, repo
+# Outputs: issue, record, state
+# Permissions: issues write on repo (issues read for a plain read)
+name: record
+description: Read or update the release record (record 1) kept in the release issue
+inputs:
+  issue:
+    description: The release issue number
+    default: ""
+  title:
+    description: 'Without issue: find the open issue with this title or open it, e.g. "Release 0.2.1"'
+    default: ""
+  labels:
+    description: Labels of a new release issue
+    default: release
+  patch:
+    description: 'A JSON object merged into the record; empty reads it. A state that goes back is refused'
+    default: ""
+  repo:
+    description: Where the release issue lives
+    default: ${{ github.repository }}
+  token:
+    description: Token with issues write on repo
+    default: ${{ github.token }}
+outputs:
+  issue:
+    description: The release issue number
+    value: ${{ steps.record.outputs.issue }}
+  record:
+    description: The record after the update, as compact JSON
+    value: ${{ steps.record.outputs.record }}
+  state:
+    description: Its state
+    value: ${{ steps.record.outputs.state }}
+runs:
+  using: composite
+  steps:
+    - id: record
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        IN_REPO: ${{ inputs.repo }}
+        IN_ISSUE: ${{ inputs.issue }}
+        IN_TITLE: ${{ inputs.title }}
+        IN_LABELS: ${{ inputs.labels }}
+        IN_PATCH: ${{ inputs.patch }}
+      run: |
+        set -eu
+        lib=$GITHUB_ACTION_PATH/../../lib
+        p=$RUNNER_TEMP/record-patch.json
+        if [ -n "$IN_PATCH" ]; then printf '%s\n' "$IN_PATCH" > "$p"; fi
+        issue=$IN_ISSUE
+        if [ -z "$issue" ]; then
+          [ -n "$IN_TITLE" ] || { echo "::error::record: give an issue or a title"; exit 1; }
+          [ -n "$IN_PATCH" ] || { echo "::error::record: a new release issue needs a patch with its first state"; exit 1; }
+          issue=$(sh "$lib/record.sh" open "$IN_REPO" "$IN_TITLE" "$IN_LABELS" "$p")
+          rec=$(sh "$lib/record.sh" get "$IN_REPO" "$issue")
+        elif [ -n "$IN_PATCH" ]; then
+          rec=$(sh "$lib/record.sh" update "$IN_REPO" "$issue" "$p")
+        else
+          rec=$(sh "$lib/record.sh" get "$IN_REPO" "$issue")
+        fi
+        {
+          echo "issue=$issue"
+          echo "record=$(printf '%s' "$rec" | jq -c .)"
+          echo "state=$(printf '%s' "$rec" | jq -r '.state // ""')"
+        } >> "$GITHUB_OUTPUT"
+        echo "record of issue $issue: $(printf '%s' "$rec" | jq -r '.state // "-"')"

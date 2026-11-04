@@ -1,0 +1,66 @@
+#!/bin/sh
+# A fake curl serving $SHIM/http/<host>/<path> ("/" is index). Beside a
+# body file: <file>.status (HTTP status, default 200), <file>.headers,
+# <file>.<n> (the body for the n-th request of that URL) and <file>.net
+# ("<count>": that many requests fail as an unresolved host). A query
+# string is ignored. Requests are logged to $SHIM/calls.
+set -eu
+: "${SHIM:?}"
+out=
+hdr=
+fmt=
+fail=
+url=
+while [ $# -gt 0 ]; do
+	case $1 in
+	-o) out=$2 && shift ;;
+	-D) hdr=$2 && shift ;;
+	-w) fmt=$2 && shift ;;
+	--max-time | --data-binary | -X | --proto | -H) shift ;;
+	-f | -fsSL | -fsS) fail=1 ;;
+	-*) ;;
+	*) url=$1 ;;
+	esac
+	shift
+done
+[ -n "$url" ] || {
+	echo "curl shim: no URL" >&2
+	exit 2
+}
+echo "CURL $url" >> "$SHIM/calls"
+u=${url%%\?*}
+u=${u#*://}
+case $u in */) u="${u}index" ;; *[!/]) case $u in */*) ;; *) u="$u/index" ;; esac ;; esac
+f=$SHIM/http/$u
+key=$(echo "$u" | tr '/:' '__')
+n=$(($(cat "$SHIM/hits.$key" 2> /dev/null || echo 0) + 1))
+echo "$n" > "$SHIM/hits.$key"
+if [ -f "$f.net" ] && [ "$n" -le "$(cat "$f.net")" ]; then
+	echo "curl: (6) Could not resolve host: ${u%%/*}" >&2
+	exit 6
+fi
+code=404
+body=
+if [ -f "$f.$n" ]; then
+	body=$f.$n
+	code=200
+elif [ -f "$f" ]; then
+	body=$f
+	code=200
+fi
+[ ! -f "$f.status" ] || code=$(cat "$f.status")
+[ -z "$hdr" ] || {
+	echo "HTTP/2 $code"
+	[ ! -f "$f.headers" ] || cat "$f.headers"
+	echo
+} > "$hdr"
+if [ -n "$out" ]; then
+	if [ -n "$body" ]; then cp "$body" "$out"; else : > "$out"; fi
+elif [ -n "$body" ]; then
+	cat "$body"
+fi
+if [ -n "$fail" ] && [ "$code" -ge 400 ]; then
+	echo "curl: (22) The requested URL returned error: $code" >&2
+	exit 22
+fi
+[ -z "$fmt" ] || printf '%s' "$code"
