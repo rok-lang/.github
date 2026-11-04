@@ -132,7 +132,7 @@ jobs:
         with:
           persist-credentials: false
       - id: rok
-        uses: ./actions/install-rok
+        uses: ./actions/install-rok # zizmor: ignore[self-repository] tests this checkout
         with:
           version: "0.2"
       - name: rok runs
