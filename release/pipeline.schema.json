@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/rok-lang/.github/blob/main/release/pipeline.schema.json",
+  "title": "Rok release pipeline manifest",
+  "description": "Every component a rok release reaches, and what each one receives. Read by the rok-lang/.github blocks; schema 1.",
+  "type": "object",
+  "required": ["schema", "org", "toolchain", "components"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "schema": { "const": 1, "description": "Raised only on a breaking change of this layout." },
+    "org": { "const": "rok-lang" },
+    "toolchain": { "$ref": "#/$defs/toolchain" },
+    "components": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Order is the fan-out order within a phase.",
+      "items": { "$ref": "#/$defs/component" }
+    }
+  },
+  "$defs": {
+    "repo": { "type": "string", "pattern": "^rok-lang/[A-Za-z0-9._-]+$" },
+    "workflow": { "type": "string", "pattern": "^[A-Za-z0-9._-]+\\.ya?ml$" },
+    "action": {
+      "enum": ["none", "verify", "close", "branch", "branch+tag", "merge-next+branch", "roadmap",
+               "redeploy", "pin-pr", "bump-pr", "tag-release", "health"]
+    },
+    "toolchain": {
+      "type": "object",
+      "required": ["id", "repo", "targets_file", "assets", "release_workflow", "environment", "supported_series", "smoke"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "repo": { "$ref": "#/$defs/repo" },
+        "targets_file": { "type": "string", "description": "Host targets stay in the toolchain repo; the manifest only points at them." },
+        "assets": { "type": "string", "pattern": "^release-assets/[0-9]+$" },
+        "release_workflow": { "$ref": "#/$defs/workflow" },
+        "environment": { "type": "string" },
+        "supported_series": { "const": "latest" },
+        "smoke": { "type": "array", "minItems": 1, "items": { "type": "string" }, "uniqueItems": true }
+      }
+    },
+    "health": {
+      "type": "object",
+      "required": ["url", "expect"],
+      "additionalProperties": false,
+      "properties": {
+        "url": {
+          "type": "string",
+          "pattern": "^(https://[a-z0-9.-]+\\.[a-z]+(/\\S*)?|index-lag:[a-z0-9.-]+|compile:[a-z0-9.-]+)$",
+          "description": "https://... (a /healthz path reads healthz/1), or a probe: index-lag:<host>, compile:<host>."
+        },
+        "expect": { "type": "string", "minLength": 1 },
+        "budget_s": { "type": "integer", "minimum": 0, "maximum": 86400 }
+      }
+    },
+    "component": {
+      "type": "object",
+      "required": ["id", "kind", "repo", "on", "owner"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" },
+        "kind": { "enum": ["content", "site", "stone", "editor", "nix", "milestone", "index", "kit", "infra"] },
+        "repo": { "$ref": "#/$defs/repo" },
+        "on": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": false,
+          "properties": {
+            "patch": { "$ref": "#/$defs/action" },
+            "series": { "$ref": "#/$defs/action" },
+            "syntax": { "$ref": "#/$defs/action" },
+            "kit": { "$ref": "#/$defs/action" }
+          }
+        },
+        "pin": {
+          "type": "object",
+          "required": ["file", "ref"],
+          "additionalProperties": false,
+          "properties": {
+            "file": { "type": "string" },
+            "ref": { "enum": ["main", "release"] }
+          }
+        },
+        "deploy": {
+          "type": "object",
+          "required": ["via", "workflow", "box"],
+          "additionalProperties": false,
+          "properties": {
+            "via": { "const": "infra" },
+            "workflow": { "$ref": "#/$defs/workflow" },
+            "box": { "type": "string", "pattern": "^[a-z0-9-]+$" }
+          }
+        },
+        "health": { "type": "array", "items": { "$ref": "#/$defs/health" } },
+        "publish": {
+          "type": "object",
+          "required": ["block", "registry", "environment"],
+          "additionalProperties": false,
+          "properties": {
+            "block": { "$ref": "#/$defs/workflow" },
+            "registry": { "type": "string" },
+            "environment": { "type": "string" }
+          }
+        },
+        "checks": { "type": "array", "items": { "$ref": "#/$defs/workflow" }, "uniqueItems": true },
+        "next": { "type": "boolean" },
+        "gate": { "enum": ["none", "warn", "block"] },
+        "owner": { "enum": ["user", "me"] },
+        "notes": { "type": "string" }
+      }
+    }
+  }
+}

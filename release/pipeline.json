@@ -1,0 +1,126 @@
+{
+  "$schema": "./pipeline.schema.json",
+  "schema": 1,
+  "org": "rok-lang",
+  "toolchain": {
+    "id": "rok",
+    "repo": "rok-lang/rok",
+    "targets_file": "release-targets.json",
+    "assets": "release-assets/1",
+    "release_workflow": "release.yml",
+    "environment": "release",
+    "supported_series": "latest",
+    "smoke": ["ubuntu-24.04", "macos-26", "windows-2022"]
+  },
+  "components": [
+    { "id": "milestone", "kind": "milestone", "repo": "rok-lang/rok",
+      "on": { "patch": "close", "series": "close" }, "owner": "me" },
+
+    { "id": "nix", "kind": "nix", "repo": "rok-lang/rok",
+      "on": { "patch": "bump-pr", "series": "bump-pr" },
+      "checks": ["nix.yml"], "owner": "me",
+      "notes": "scripts/nix-sources.sh {version}; branch nix/{version}; title 'chore(nix): install {version}'; auto-merge through the queue" },
+
+    { "id": "docs", "kind": "content", "repo": "rok-lang/docs",
+      "on": { "patch": "branch", "series": "merge-next+branch" },
+      "checks": ["content.yml"],
+      "health": [
+        { "url": "https://docs.rok-lang.org/versions.json", "expect": "\"latest\":\"{version}\"", "budget_s": 900 },
+        { "url": "https://docs.rok-lang.org/latest", "expect": "Docs version: v{version}" }
+      ], "owner": "me" },
+
+    { "id": "spec", "kind": "content", "repo": "rok-lang/spec",
+      "on": { "patch": "branch+tag", "series": "branch+tag" },
+      "checks": ["content.yml"], "owner": "me" },
+
+    { "id": "www", "kind": "content", "repo": "rok-lang/www",
+      "on": { "patch": "roadmap", "series": "roadmap" },
+      "checks": ["content.yml"], "owner": "me",
+      "notes": "scripts/roadmap-ship.sh {version}: card to Shipped with date, link and the Summary line of the CHANGELOG section" },
+
+    { "id": "rok-lang.org", "kind": "site", "repo": "rok-lang/rok-lang.org",
+      "on": { "patch": "redeploy", "series": "pin-pr", "kit": "bump-pr" },
+      "pin": { "file": "rok.rokon", "ref": "release" },
+      "deploy": { "via": "infra", "workflow": "deploy-rok-web.yml", "box": "rok-web" },
+      "health": [
+        { "url": "https://rok-lang.org/healthz", "expect": "toolchain {pinned}", "budget_s": 300 },
+        { "url": "https://rok-lang.org/install.sh", "expect": "{version}", "budget_s": 900 }
+      ],
+      "next": true, "gate": "warn", "owner": "user" },
+
+    { "id": "playground", "kind": "site", "repo": "rok-lang/playground.rok-lang.org",
+      "on": { "patch": "redeploy", "series": "pin-pr", "kit": "bump-pr" },
+      "pin": { "file": "rok.rokon", "ref": "release" },
+      "deploy": { "via": "infra", "workflow": "deploy-playground.yml", "box": "playground" },
+      "health": [
+        { "url": "https://playground.rok-lang.org/healthz", "expect": "toolchain {pinned}", "budget_s": 180 },
+        { "url": "compile:playground.rok-lang.org", "expect": "wasm", "budget_s": 120 }
+      ],
+      "checks": ["ci.yml"], "next": true, "gate": "warn", "owner": "user",
+      "notes": "/healthz names the toolchain 'release' until it serves healthz/1; the checker reads either" },
+
+    { "id": "rokstones.io", "kind": "site", "repo": "rok-lang/rokstones.io",
+      "on": { "patch": "redeploy", "series": "pin-pr", "kit": "bump-pr" },
+      "pin": { "file": "rok.rokon", "ref": "release" },
+      "deploy": { "via": "infra", "workflow": "deploy-rokstones.yml", "box": "rokstones" },
+      "health": [
+        { "url": "https://rokstones.io/", "expect": "rok {pinned}", "budget_s": 180 },
+        { "url": "https://rokstones.io/api/v1/stones/json", "expect": "Version { version: " }
+      ],
+      "next": true, "gate": "warn", "owner": "user",
+      "notes": "no /healthz yet; switch the first check to /healthz 'toolchain {pinned}' once it serves healthz/1" },
+
+    { "id": "json", "kind": "stone", "repo": "rok-lang/json",
+      "on": { "patch": "verify", "series": "pin-pr" },
+      "pin": { "file": "rok.rokon", "ref": "main" },
+      "publish": { "block": "stone-publish.yml", "registry": "rokstones.io", "environment": "release" },
+      "next": true, "gate": "block", "owner": "me" },
+    { "id": "toml", "kind": "stone", "repo": "rok-lang/toml",
+      "on": { "patch": "verify", "series": "pin-pr" },
+      "pin": { "file": "rok.rokon", "ref": "main" },
+      "publish": { "block": "stone-publish.yml", "registry": "rokstones.io", "environment": "release" },
+      "next": true, "gate": "block", "owner": "me" },
+    { "id": "http", "kind": "stone", "repo": "rok-lang/http",
+      "on": { "patch": "verify", "series": "pin-pr" },
+      "pin": { "file": "rok.rokon", "ref": "main" },
+      "publish": { "block": "stone-publish.yml", "registry": "rokstones.io", "environment": "release" },
+      "next": true, "gate": "block", "owner": "me" },
+    { "id": "markdown", "kind": "stone", "repo": "rok-lang/markdown",
+      "on": { "patch": "verify", "series": "pin-pr" },
+      "pin": { "file": "rok.rokon", "ref": "main" },
+      "publish": { "block": "stone-publish.yml", "registry": "rokstones.io", "environment": "release" },
+      "next": true, "gate": "block", "owner": "me" },
+    { "id": "rok-syntax", "kind": "stone", "repo": "rok-lang/rok-syntax",
+      "on": { "patch": "verify", "series": "pin-pr" },
+      "pin": { "file": "rok.rokon", "ref": "main" },
+      "publish": { "block": "stone-publish.yml", "registry": "rokstones.io", "environment": "release" },
+      "checks": ["test.yml"], "next": true, "gate": "block", "owner": "me",
+      "notes": "a successful publish emits the syntax event to the editors" },
+
+    { "id": "rok.vscode", "kind": "editor", "repo": "rok-lang/rok.vscode",
+      "on": { "syntax": "bump-pr" },
+      "publish": { "block": "tag-release.yml", "registry": "marketplace+openvsx", "environment": "release" },
+      "health": [
+        { "url": "https://open-vsx.org/api/rok-lang/rok", "expect": "\"version\":\"{editor_version}\"", "budget_s": 1800 }
+      ],
+      "checks": ["ci.yml"], "owner": "me" },
+    { "id": "rok.zed", "kind": "editor", "repo": "rok-lang/rok.zed",
+      "on": { "syntax": "bump-pr" },
+      "publish": { "block": "tag-release.yml", "registry": "zed-extensions (manual PR)", "environment": "release" },
+      "checks": ["ci.yml"], "owner": "user" },
+    { "id": "rok.vim", "kind": "editor", "repo": "rok-lang/rok.vim",
+      "on": { "syntax": "bump-pr" }, "checks": ["sync.yml"], "owner": "me" },
+
+    { "id": "index", "kind": "index", "repo": "rok-lang/rokstones.io-index",
+      "on": { "patch": "health", "series": "health" },
+      "health": [ { "url": "index-lag:rokstones.io", "expect": "0", "budget_s": 600 } ],
+      "notes": "config.rokon format 2; written only by the rokstones server deploy key", "owner": "me" },
+
+    { "id": "web-kit", "kind": "kit", "repo": "rok-lang/web",
+      "on": { "kit": "bump-pr" },
+      "notes": "submodule web/ in rok-lang.org, rokstones.io, playground; content.yml builds rok_content from the pinned kit", "owner": "user" },
+
+    { "id": "infra", "kind": "infra", "repo": "rok-lang/infra",
+      "on": { "patch": "redeploy", "series": "redeploy" }, "owner": "me" }
+  ]
+}
